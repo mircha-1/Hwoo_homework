@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="오늘의숙제" />
+  <meta name="theme-color" content="#4F46E5" />
+  <link rel="manifest" href="./manifest.json" />
+  <title>오늘의 숙제 체크장 📝</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background-color: #F1F5F9;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .task-card {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .task-card:active {
+      transform: scale(0.985);
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-24 text-slate-800">
+
+  <!-- 상단 헤더 -->
+  <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-20">
+    <div class="max-w-md mx-auto px-4 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">📝</span>
+        <div>
+          <h1 class="text-lg font-bold leading-tight">오늘의 숙제 체크장</h1>
+          <p id="syncStatusText" class="text-xs text-indigo-200">로컬 체험 모드 (⚙️에서 시트 연결)</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button onclick="refreshTasks()" title="새로고침" class="p-2 rounded-full hover:bg-indigo-500 active:bg-indigo-700 transition">
+          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+        <button onclick="openSettingsModal()" title="구글 시트 연동 설정" class="p-2 rounded-full hover:bg-indigo-500 active:bg-indigo-700 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 컨테이너 -->
+  <main class="max-w-md mx-auto px-4 pt-4 space-y-4">
+
+    <!-- 날짜 선택 바 -->
+    <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 flex items-center justify-between">
+      <button onclick="changeDate(-1)" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm active:scale-95 transition">
+        ◀ 어제
+      </button>
+      <div class="text-center relative">
+        <input type="date" id="datePicker" onchange="onDatePick(this.value)" class="sr-only" />
+        <button onclick="document.getElementById('datePicker').showPicker ? document.getElementById('datePicker').showPicker() : document.getElementById('datePicker').click()" class="group flex flex-col items-center">
+          <span id="displayDate" class="text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition"></span>
+          <span id="todayBadge" class="text-xs font-medium text-indigo-600">오늘 날짜로 이동하려면 터치</span>
+        </button>
+      </div>
+      <button onclick="changeDate(1)" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm active:scale-95 transition">
+        내일 ▶
+      </button>
+    </div>
+
+    <!-- 진행률 카드 -->
+    <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+      <div class="flex items-center justify-between mb-2">
+        <span id="progressMessage" class="text-sm font-bold text-slate-700">오늘 할 숙제를 확인해 볼까요? 💪</span>
+        <span id="progressCount" class="text-sm font-extrabold text-indigo-600">0 / 0</span>
+      </div>
+      <div class="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden">
+        <div id="progressBar" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- 과목 필터 탭 -->
+    <div class="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar" id="categoryTabs">
+      <button onclick="setFilter('전체')" data-cat="전체" class="cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-600 text-white shadow-sm shrink-0">전체</button>
+      <button onclick="setFilter('학교 숙제')" data-cat="학교 숙제" class="cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0">🏫 학교 숙제</button>
+      <button onclick="setFilter('수학 숙제')" data-cat="수학 숙제" class="cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0">📐 수학 숙제</button>
+      <button onclick="setFilter('영어 숙제')" data-cat="영어 숙제" class="cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0">🔤 영어 숙제</button>
+      <button onclick="setFilter('기타/준비물')" data-cat="기타/준비물" class="cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0">🎒 기타/준비물</button>
+    </div>
+
+    <!-- 숙제 리스트 영역 -->
+    <div id="taskList" class="space-y-3"></div>
+
+    <!-- 하단 액션 버튼들 (숙제 추가 & 카톡/문자 공유) -->
+    <div class="pt-2 grid grid-cols-2 gap-2.5">
+      <button onclick="openAddModal()" class="flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-sm active:scale-95 transition">
+        <span>➕</span> 숙제 추가하기
+      </button>
+      <button onclick="shareTodayHomework()" class="flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-sm shadow-sm active:scale-95 transition">
+        <span>💬</span> 카톡/메시지 전송
+      </button>
+    </div>
+
+  </main>
+
+  <!-- [모달 1] 숙제 추가 모달 -->
+  <div id="addModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-extrabold text-slate-800">➕ 새 숙제 등록</h2>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">과목 분류</label>
+          <div class="grid grid-cols-2 gap-2" id="modalCategorySelect">
+            <button type="button" onclick="selectModalCat('학교 숙제')" data-val="학교 숙제" class="modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border-2 border-indigo-600 bg-indigo-50 text-indigo-700">🏫 학교 숙제</button>
+            <button type="button" onclick="selectModalCat('수학 숙제')" data-val="수학 숙제" class="modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-600">📐 수학 숙제</button>
+            <button type="button" onclick="selectModalCat('영어 숙제')" data-val="영어 숙제" class="modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-600">🔤 영어 숙제</button>
+            <button type="button" onclick="selectModalCat('기타/준비물')" data-val="기타/준비물" class="modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-600">🎒 기타/준비물</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">숙제 제목 (필수)</label>
+          <input id="inputTitle" type="text" placeholder="예: 쎈 수학 문제집 풀기" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">상세 범위 / 메모 (선택)</label>
+          <input id="inputMemo" type="text" placeholder="예: 42쪽 ~ 45쪽 (모르는 문제는 별표)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="closeAddModal()" class="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">취소</button>
+        <button onclick="submitNewTask()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [모달 2] 구글 시트 연동 설정 모달 -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-extrabold text-slate-800">⚙️ 구글 시트 연동 설정</h2>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <p class="text-xs text-slate-600 leading-relaxed">
+        구글 스프레드시트의 <b>[확장 프로그램 &gt; Apps Script]</b>에서 배포한 <b>웹 앱 URL</b>을 아래에 붙여넣으시면 부모님과 아이 폰이 실시간으로 연동됩니다.
+      </p>
+
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">Apps Script 웹 앱 URL</label>
+        <input id="inputScriptUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div class="bg-indigo-50 rounded-2xl p-3 space-y-2">
+        <p class="text-xs font-bold text-indigo-900">💡 아이 폰에 1초 만에 연결하는 팁</p>
+        <p class="text-[11px] text-indigo-700 leading-relaxed">
+          위 주소를 저장한 뒤 아래 버튼을 눌러 아이 카톡으로 보내주세요. 아이가 링크를 한 번만 터치하면 아이 폰에도 구글 시트가 자동 연결됩니다!
+        </p>
+        <button onclick="copyChildInviteLink()" class="w-full py-2 rounded-xl bg-white border border-indigo-200 text-indigo-700 font-bold text-xs shadow-sm active:scale-95 transition">
+          🔗 아이 폰 자동연결 링크 복사하기
+        </button>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button onclick="closeSettingsModal()" class="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">닫기</button>
+        <button onclick="saveSettings()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">연동 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50">
+    알림 메시지
+  </div>
+
+  <script>
+    /**
+     * 💡 [선택] 코드에 아예 구글 시트 주소를 고정하고 싶으시다면
+     * 아래 따옴표 안에 'https://script.google.com/macros/s/.../exec' 주소를 넣어두셔도 됩니다.
+     */
+    const DEFAULT_SCRIPT_URL = '';
+
+    const STORAGE_KEY_URL = 'homework_app_script_url_v1';
+    const STORAGE_KEY_LOCAL_TASKS = 'homework_app_local_tasks_v1';
+
+    let currentDateStr = getTodayStr();
+    let currentFilter = '전체';
+    let selectedModalCat = '학교 숙제';
+    let tasks = [];
+
+    // 오늘 날짜 (YYYY-MM-DD)
+    function getTodayStr() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    // URL 파라미터(?api=...)로 전달된 구글 시트 주소가 있으면 자동 저장
+    function checkUrlApiParam() {
+      const params = new URLSearchParams(window.location.search);
+      const apiParam = params.get('api');
+      if (apiParam && apiParam.startsWith('https://script.google.com/')) {
+        localStorage.setItem(STORAGE_KEY_URL, apiParam.trim());
+        // 주소창 깔끔하게 정리
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('✅ 구글 시트 연동이 자동으로 설정되었습니다!');
+      }
+    }
+
+    function getScriptUrl() {
+      return localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_SCRIPT_URL || '';
+    }
+
+    // 초기 샘플 데이터 (구글 시트 연결 전에도 바로 테스트 가능)
+    function getInitialLocalTasks() {
+      const saved = localStorage.getItem(STORAGE_KEY_LOCAL_TASKS);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+      const today = getTodayStr();
+      const sample = [
+        { id: 'local-1', date: today, category: '학교 숙제', title: '알림장 확인 및 일기 쓰기', memo: '공책 1바닥 채우기, 글씨 바르게 쓰기', completed: false },
+        { id: 'local-2', date: today, category: '수학 숙제', title: '쎈 수학 문제집 풀기', memo: '42쪽 ~ 45쪽 (틀린 문제 다시 풀기)', completed: false },
+        { id: 'local-3', date: today, category: '영어 숙제', title: '영어 단어 외우기 & 음원 듣기', memo: 'Day 12 단어 20개 + 소리 내어 3번 읽기', completed: false }
+      ];
+      localStorage.setItem(STORAGE_KEY_LOCAL_TASKS, JSON.stringify(sample));
+      return sample;
+    }
+
+    function saveLocalTasks(allTasks) {
+      localStorage.setItem(STORAGE_KEY_LOCAL_TASKS, JSON.stringify(allTasks));
+    }
+
+    // 날짜 표시 업데이트
+    function updateDateHeader() {
+      const [y, m, d] = currentDateStr.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      const dayName = days[dateObj.getDay()];
+
+      document.getElementById('displayDate').textContent = `${m}월 ${d}일 (${dayName}요일)`;
+      document.getElementById('datePicker').value = currentDateStr;
+
+      const badge = document.getElementById('todayBadge');
+      if (currentDateStr === getTodayStr()) {
+        badge.textContent = '✨ 오늘의 숙제 (날짜 변경은 터치)';
+        badge.className = 'text-xs font-bold text-indigo-600';
+      } else {
+        badge.textContent = '📅 다른 날짜 보는 중 (오늘로 가려면 더블탭)';
+        badge.className = 'text-xs font-semibold text-amber-600';
+      }
+    }
+
+    function changeDate(offsetDays) {
+      const [y, m, d] = currentDateStr.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      dateObj.setDate(dateObj.getDate() + offsetDays);
+      const ny = dateObj.getFullYear();
+      const nm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const nd = String(dateObj.getDate()).padStart(2, '0');
+      currentDateStr = `${ny}-${nm}-${nd}`;
+      updateDateHeader();
+      loadTasks();
+    }
+
+    function onDatePick(val) {
+      if (!val) return;
+      currentDateStr = val;
+      updateDateHeader();
+      loadTasks();
+    }
+
+    // 과목별 스타일 배지
+    function getCategoryBadge(cat) {
+      if (cat.includes('학교')) {
+        return { icon: '🏫', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
+      }
+      if (cat.includes('수학')) {
+        return { icon: '📐', bg: 'bg-purple-50 text-purple-700 border-purple-200' };
+      }
+      if (cat.includes('영어')) {
+        return { icon: '🔤', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+      }
+      return { icon: '🎒', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
+    }
+
+    // 숙제 데이터 불러오기 (구글 시트 연동 또는 로컬 모드)
+    async function loadTasks() {
+      const scriptUrl = getScriptUrl();
+      const statusEl = document.getElementById('syncStatusText');
+      const iconEl = document.getElementById('refreshIcon');
+      iconEl.classList.add('animate-spin');
+
+      if (!scriptUrl) {
+        statusEl.textContent = '로컬 체험 모드 (우측 상단 ⚙️에서 구글 시트 연결)';
+        const allLocal = getInitialLocalTasks();
+        tasks = allLocal.filter(t => t.date === currentDateStr);
+        renderTasks();
+        iconEl.classList.remove('animate-spin');
+        return;
+      }
+
+      statusEl.textContent = '☁️ 구글 시트와 동기화 중...';
+      try {
+        const res = await fetch(`${scriptUrl}?date=${encodeURIComponent(currentDateStr)}`);
+        const data = await res.json();
+        if (data.status === 'ok') {
+          tasks = data.items || [];
+          statusEl.textContent = '✅ 구글 스프레드시트 실시간 연동 중';
+        } else {
+          statusEl.textContent = '⚠️ 시트 응답 오류 (설정을 확인해주세요)';
+        }
+      } catch (err) {
+        statusEl.textContent = '⚠️ 연결 실패 (오프라인 또는 URL 확인 필요)';
+      } finally {
+        iconEl.classList.remove('animate-spin');
+        renderTasks();
+      }
+    }
+
+    function refreshTasks() {
+      loadTasks();
+      showToast('🔄 최신 숙제 목록을 불러왔어요!');
+    }
+
+    // 화면 렌더링
+    function renderTasks() {
+      const listEl = document.getElementById('taskList');
+      const total = tasks.length;
+      const done = tasks.filter(t => t.completed).length;
+      const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+
+      document.getElementById('progressCount').textContent = `${done} / ${total} 완료 (${pct}%)`;
+      document.getElementById('progressBar').style.width = `${pct}%`;
+
+      const msgEl = document.getElementById('progressMessage');
+      if (total === 0) {
+        msgEl.textContent = '등록된 숙제가 없어요! ➕ 버튼으로 추가해 보세요.';
+      } else if (done === total) {
+        msgEl.textContent = '🎉 우와! 오늘 숙제를 모두 끝냈어요! 최고예요!';
+      } else if (done > 0) {
+        msgEl.textContent = `영차영차! ${total - done}개만 더 하면 오늘 숙제 끝! 🔥`;
+      } else {
+        msgEl.textContent = '오늘 할 숙제를 하나씩 시작해 볼까요? 💪';
+      }
+
+      const filtered = currentFilter === '전체'
+        ? tasks
+        : tasks.filter(t => t.category === currentFilter);
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `
+          <div class="bg-white rounded-2xl p-8 text-center border border-dashed border-slate-300 text-slate-400">
+            <p class="text-3xl mb-2">📭</p>
+            <p class="text-sm font-bold">이 날에는 해당 숙제가 없어요</p>
+            <p class="text-xs mt-1">아래 [➕ 숙제 추가하기] 버튼이나 구글 시트에서 입력해주세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(item => {
+        const badge = getCategoryBadge(item.category);
+        const isDone = item.completed;
+        return `
+          <div onclick="toggleTask('${item.id}')" class="task-card cursor-pointer bg-white rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} flex items-start gap-3.5">
+            <!-- 체크박스 아이콘 -->
+            <div class="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${isDone ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 bg-slate-50'}">
+              ${isDone ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
+            </div>
+
+            <!-- 숙제 본문 -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${badge.bg}">
+                  ${badge.icon} ${escapeHtml(item.category)}
+                </span>
+                <button onclick="event.stopPropagation(); deleteTask('${item.id}')" title="삭제" class="text-slate-300 hover:text-rose-500 p-1 text-xs">
+                  삭제
+                </button>
+              </div>
+              <p class="text-base font-bold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}">
+                ${escapeHtml(item.title)}
+              </p>
+              ${item.memo ? `<p class="text-xs mt-1 leading-relaxed ${isDone ? 'line-through text-slate-400' : 'text-slate-500'}">📌 ${escapeHtml(item.memo)}</p>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 숙제 완료 토글
+    async function toggleTask(id) {
+      const target = tasks.find(t => String(t.id) === String(id));
+      if (!target) return;
+
+      target.completed = !target.completed;
+      renderTasks();
+
+      // 전부 완료되었을 때 폭죽 효과!
+      const total = tasks.length;
+      const done = tasks.filter(t => t.completed).length;
+      if (target.completed && total > 0 && done === total && typeof confetti === 'function') {
+        confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+        showToast('🎉 오늘 숙제 100% 완료! 정말 대단해요!');
+      }
+
+      const scriptUrl = getScriptUrl();
+      if (!scriptUrl) {
+        const allLocal = getInitialLocalTasks().map(t => t.id === id ? { ...t, completed: target.completed } : t);
+        saveLocalTasks(allLocal);
+        return;
+      }
+
+      try {
+        await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'toggle', id: id, completed: target.completed })
+        });
+      } catch (e) {
+        showToast('⚠️ 시트 저장 중 네트워크 오류가 발생했어요.');
+      }
+    }
+
+    // 새 숙제 추가
+    async function submitNewTask() {
+      const titleEl = document.getElementById('inputTitle');
+      const memoEl = document.getElementById('inputMemo');
+      const title = titleEl.value.trim();
+      const memo = memoEl.value.trim();
+
+      if (!title) {
+        showToast('숙제 제목을 입력해 주세요!');
+        titleEl.focus();
+        return;
+      }
+
+      const newTask = {
+        id: 'hw-' + Date.now(),
+        date: currentDateStr,
+        category: selectedModalCat,
+        title: title,
+        memo: memo,
+        completed: false
+      };
+
+      tasks.push(newTask);
+      renderTasks();
+      closeAddModal();
+      titleEl.value = '';
+      memoEl.value = '';
+      showToast('✅ 새 숙제가 등록되었습니다!');
+
+      const scriptUrl = getScriptUrl();
+      if (!scriptUrl) {
+        const allLocal = getInitialLocalTasks();
+        allLocal.push(newTask);
+        saveLocalTasks(allLocal);
+        return;
+      }
+
+      try {
+        await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'add', item: newTask })
+        });
+      } catch (e) {
+        showToast('⚠️ 시트 동기화 실패 (인터넷 연결을 확인해주세요)');
+      }
+    }
+
+    // 숙제 삭제
+    async function deleteTask(id) {
+      if (!confirm('이 숙제 항목을 삭제할까요?')) return;
+      tasks = tasks.filter(t => String(t.id) !== String(id));
+      renderTasks();
+      showToast('🗑️ 삭제되었습니다.');
+
+      const scriptUrl = getScriptUrl();
+      if (!scriptUrl) {
+        const allLocal = getInitialLocalTasks().filter(t => String(t.id) !== String(id));
+        saveLocalTasks(allLocal);
+        return;
+      }
+
+      try {
+        await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'delete', id: id })
+        });
+      } catch (e) {}
+    }
+
+    // 카카오 개발자 계정 없이 스마트폰 기본 공유/복사로 카톡 전송
+    async function shareTodayHomework() {
+      const dateTitle = document.getElementById('displayDate').textContent;
+      const lines = [`📝 [오늘의 숙제] ${dateTitle}`, ''];
+
+      if (tasks.length === 0) {
+        lines.push('등록된 숙제가 없습니다.');
+      } else {
+        tasks.forEach(t => {
+          const checkMark = t.completed ? '✅' : '⬜';
+          const memoText = t.memo ? ` (${t.memo})` : '';
+          lines.push(`${checkMark} [${t.category}] ${t.title}${memoText}`);
+        });
+      }
+
+      const shareUrl = getChildInviteUrl();
+      lines.push('');
+      lines.push(`👉 숙제 체크하러 가기: ${shareUrl}`);
+
+      const fullText = lines.join('\n');
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `오늘의 숙제 (${dateTitle})`,
+            text: fullText
+          });
+          return;
+        } catch (err) {
+          // 사용자가 취소한 경우 무시
+          if (err.name === 'AbortError') return;
+        }
+      }
+
+      // PC거나 Web Share 미지원 브라우저면 클립보드 복사
+      await navigator.clipboard.writeText(fullText);
+      showToast('📋 오늘 숙제 내용이 복사되었어요! 카톡방에 붙여넣기 해주세요.');
+    }
+
+    // 아이 폰 자동연결 링크 생성
+    function getChildInviteUrl() {
+      const base = window.location.origin + window.location.pathname;
+      const scriptUrl = getScriptUrl();
+      if (scriptUrl) {
+        return `${base}?api=${encodeURIComponent(scriptUrl)}`;
+      }
+      return base;
+    }
+
+    async function copyChildInviteLink() {
+      const inputUrl = document.getElementById('inputScriptUrl').value.trim();
+      if (inputUrl) {
+        localStorage.setItem(STORAGE_KEY_URL, inputUrl);
+      }
+      const inviteUrl = getChildInviteUrl();
+      await navigator.clipboard.writeText(inviteUrl);
+      showToast('🔗 자동연결 링크가 복사되었습니다! 아이 카톡으로 보내주세요.');
+    }
+
+    // 필터 및 모달 UI 제어
+    function setFilter(cat) {
+      currentFilter = cat;
+      document.querySelectorAll('.cat-tab').forEach(btn => {
+        if (btn.dataset.cat === cat) {
+          btn.className = 'cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-indigo-600 text-white shadow-sm shrink-0';
+        } else {
+          btn.className = 'cat-tab px-3.5 py-1.5 rounded-full text-xs font-bold bg-white text-slate-600 border border-slate-200 shrink-0';
+        }
+      });
+      renderTasks();
+    }
+
+    function selectModalCat(cat) {
+      selectedModalCat = cat;
+      document.querySelectorAll('.modal-cat-btn').forEach(btn => {
+        if (btn.dataset.val === cat) {
+          btn.className = 'modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border-2 border-indigo-600 bg-indigo-50 text-indigo-700';
+        } else {
+          btn.className = 'modal-cat-btn py-2 px-3 rounded-xl text-xs font-bold border border-slate-200 text-slate-600';
+        }
+      });
+    }
+
+    function openAddModal() {
+      document.getElementById('addModal').classList.remove('hidden');
+      document.getElementById('addModal').classList.add('flex');
+      setTimeout(() => document.getElementById('inputTitle').focus(), 100);
+    }
+
+    function closeAddModal() {
+      document.getElementById('addModal').classList.add('hidden');
+      document.getElementById('addModal').classList.remove('flex');
+    }
+
+    function openSettingsModal() {
+      document.getElementById('inputScriptUrl').value = getScriptUrl();
+      document.getElementById('settingsModal').classList.remove('hidden');
+      document.getElementById('settingsModal').classList.add('flex');
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settingsModal').classList.add('hidden');
+      document.getElementById('settingsModal').classList.remove('flex');
+    }
+
+    function saveSettings() {
+      const val = document.getElementById('inputScriptUrl').value.trim();
+      localStorage.setItem(STORAGE_KEY_URL, val);
+      closeSettingsModal();
+      showToast('✅ 구글 시트 연동 설정이 저장되었습니다!');
+      loadTasks();
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.remove('opacity-0');
+      setTimeout(() => t.classList.add('opacity-0'), 2600);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // 앱 시작
+    checkUrlApiParam();
+    updateDateHeader();
+    loadTasks();
+  </script>
+</body>
+</html>
