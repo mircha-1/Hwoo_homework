@@ -97,13 +97,10 @@
     <!-- 숙제 리스트 영역 -->
     <div id="taskList" class="space-y-3"></div>
 
-    <!-- 하단 액션 버튼들 (숙제 추가 & 카톡/문자 공유) -->
-    <div class="pt-2 grid grid-cols-2 gap-2.5">
-      <button onclick="openAddModal()" class="flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-sm active:scale-95 transition">
+    <!-- 하단 액션 버튼 (숙제 추가) -->
+    <div class="pt-2">
+      <button onclick="openAddModal()" class="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base shadow-sm active:scale-95 transition">
         <span>➕</span> 숙제 추가하기
-      </button>
-      <button onclick="shareTodayHomework()" class="flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-sm shadow-sm active:scale-95 transition">
-        <span>💬</span> 카톡/메시지 전송
       </button>
     </div>
 
@@ -403,7 +400,7 @@
       }).join('');
     }
 
-    // 숙제 완료 토글
+    // 숙제 완료 토글 (실시간 동기화 강화)
     async function toggleTask(id) {
       const target = tasks.find(t => String(t.id) === String(id));
       if (!target) return;
@@ -411,7 +408,7 @@
       target.completed = !target.completed;
       renderTasks();
 
-      // 전부 완료되었을 때 폭죽 효과!
+      // 전부 완료되었을 때 축하 폭죽 효과
       const total = tasks.length;
       const done = tasks.filter(t => t.completed).length;
       if (target.completed && total > 0 && done === total && typeof confetti === 'function') {
@@ -427,12 +424,21 @@
       }
 
       try {
-        await fetch(scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'toggle', id: id, completed: target.completed })
+        // GET 방식으로 직접 파라미터를 넘겨 구글 CORS 리다이렉트 문제 100% 우회
+        const params = new URLSearchParams({
+          action: 'toggle',
+          id: id,
+          row: target.row || '',
+          completed: target.completed,
+          _t: Date.now()
         });
+        const res = await fetch(`${scriptUrl}?${params.toString()}`);
+        const result = await res.json();
+        if (result.status === 'ok') {
+          showToast(target.completed ? '✅ 시트에 완료 체크 완료!' : '체크를 해제했어요.');
+        }
       } catch (e) {
+        console.error('시트 동기화 에러:', e);
         showToast('⚠️ 시트 저장 중 네트워크 오류가 발생했어요.');
       }
     }
@@ -452,6 +458,7 @@
 
       const newTask = {
         id: 'hw-' + Date.now(),
+        row: tasks.length + 2,
         date: currentDateStr,
         category: selectedModalCat,
         title: title,
@@ -464,7 +471,7 @@
       closeAddModal();
       titleEl.value = '';
       memoEl.value = '';
-      showToast('✅ 새 숙제가 등록되었습니다!');
+      showToast('✅ 새 숙제를 등록했어요!');
 
       const scriptUrl = getScriptUrl();
       if (!scriptUrl) {
@@ -475,19 +482,25 @@
       }
 
       try {
-        await fetch(scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'add', item: newTask })
+        const params = new URLSearchParams({
+          action: 'add',
+          date: newTask.date,
+          category: newTask.category,
+          title: newTask.title,
+          memo: newTask.memo,
+          _t: Date.now()
         });
+        await fetch(`${scriptUrl}?${params.toString()}`);
+        loadTasks(); // 최신 행 번호 갱신
       } catch (e) {
-        showToast('⚠️ 시트 동기화 실패 (인터넷 연결을 확인해주세요)');
+        showToast('⚠️ 시트 동기화 실패 (네트워크를 확인해주세요)');
       }
     }
 
     // 숙제 삭제
     async function deleteTask(id) {
       if (!confirm('이 숙제 항목을 삭제할까요?')) return;
+      const target = tasks.find(t => String(t.id) === String(id));
       tasks = tasks.filter(t => String(t.id) !== String(id));
       renderTasks();
       showToast('🗑️ 삭제되었습니다.');
@@ -500,51 +513,15 @@
       }
 
       try {
-        await fetch(scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'delete', id: id })
+        const params = new URLSearchParams({
+          action: 'delete',
+          id: id,
+          row: target ? target.row : '',
+          _t: Date.now()
         });
+        await fetch(`${scriptUrl}?${params.toString()}`);
+        loadTasks();
       } catch (e) {}
-    }
-
-    // 카카오 개발자 계정 없이 스마트폰 기본 공유/복사로 카톡 전송
-    async function shareTodayHomework() {
-      const dateTitle = document.getElementById('displayDate').textContent;
-      const lines = [`📝 [오늘의 숙제] ${dateTitle}`, ''];
-
-      if (tasks.length === 0) {
-        lines.push('등록된 숙제가 없습니다.');
-      } else {
-        tasks.forEach(t => {
-          const checkMark = t.completed ? '✅' : '⬜';
-          const memoText = t.memo ? ` (${t.memo})` : '';
-          lines.push(`${checkMark} [${t.category}] ${t.title}${memoText}`);
-        });
-      }
-
-      const shareUrl = getChildInviteUrl();
-      lines.push('');
-      lines.push(`👉 숙제 체크하러 가기: ${shareUrl}`);
-
-      const fullText = lines.join('\n');
-
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: `오늘의 숙제 (${dateTitle})`,
-            text: fullText
-          });
-          return;
-        } catch (err) {
-          // 사용자가 취소한 경우 무시
-          if (err.name === 'AbortError') return;
-        }
-      }
-
-      // PC거나 Web Share 미지원 브라우저면 클립보드 복사
-      await navigator.clipboard.writeText(fullText);
-      showToast('📋 오늘 숙제 내용이 복사되었어요! 카톡방에 붙여넣기 해주세요.');
     }
 
     // 아이 폰 자동연결 링크 생성
