@@ -25,6 +25,13 @@
     .task-card:active {
       transform: scale(0.985);
     }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
   </style>
 </head>
 <body class="min-h-screen text-slate-800">
@@ -63,12 +70,12 @@
       <button onclick="changeDate(-1)" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm active:scale-95 transition">
         ◀ 어제
       </button>
-      <div class="text-center relative">
+      <div class="text-center relative flex flex-col items-center">
         <input type="date" id="datePicker" onchange="onDatePick(this.value)" class="sr-only" />
-        <button onclick="document.getElementById('datePicker').showPicker ? document.getElementById('datePicker').showPicker() : document.getElementById('datePicker').click()" class="group flex flex-col items-center">
+        <button onclick="openDatePicker()" class="group flex flex-col items-center">
           <span id="displayDate" class="text-base font-extrabold text-slate-800 group-hover:text-indigo-600 transition"></span>
-          <span id="todayBadge" class="text-xs font-medium text-indigo-600">오늘 날짜로 이동하려면 터치</span>
         </button>
+        <button id="todayBadge" onclick="onBadgeClick()" class="text-xs font-medium text-indigo-600 mt-0.5"></button>
       </div>
       <button onclick="changeDate(1)" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm active:scale-95 transition">
         내일 ▶
@@ -108,7 +115,7 @@
   </main>
 
   <!-- [모달 1] 숙제 추가 모달 -->
-  <div id="addModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+  <div id="addModal" onclick="if(event.target === this) closeAddModal()" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-xl space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-extrabold text-slate-800">➕ 새 숙제 등록</h2>
@@ -128,24 +135,24 @@
 
         <div>
           <label class="block text-xs font-bold text-slate-600 mb-1">숙제 제목 (필수)</label>
-          <input id="inputTitle" type="text" placeholder="예: 쎈 수학 문제집 풀기" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <input id="inputTitle" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('inputMemo').focus();}" placeholder="예: 쎈 수학 문제집 풀기" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
 
         <div>
           <label class="block text-xs font-bold text-slate-600 mb-1">상세 범위 / 메모 (선택)</label>
-          <input id="inputMemo" type="text" placeholder="예: 42쪽 ~ 45쪽 (모르는 문제는 별표)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <input id="inputMemo" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault(); submitNewTask();}" placeholder="예: 42쪽 ~ 45쪽 (모르는 문제는 별표)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
       </div>
 
       <div class="flex gap-2 pt-2">
         <button onclick="closeAddModal()" class="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">취소</button>
-        <button onclick="submitNewTask()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">저장하기</button>
+        <button id="submitTaskBtn" onclick="submitNewTask()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">저장하기</button>
       </div>
     </div>
   </div>
 
   <!-- [모달 2] 구글 시트 연동 설정 모달 -->
-  <div id="settingsModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+  <div id="settingsModal" onclick="if(event.target === this) closeSettingsModal()" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-xl space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-extrabold text-slate-800">⚙️ 구글 시트 연동 설정</h2>
@@ -183,9 +190,12 @@
     const STORAGE_KEY_LOCAL_TASKS = 'homework_app_local_tasks_v1';
 
     let currentDateStr = getTodayStr();
+    let lastKnownTodayStr = currentDateStr; // 자정 경과 여부 비교용
     let currentFilter = '전체';
     let selectedModalCat = '학교 숙제';
     let tasks = [];
+    let isSubmittingNewTask = false;
+    let toastTimer = null;
     const pendingToggles = new Set(); // 중복 클릭 방지 세트
 
     // 오늘 날짜 문자열 (YYYY-MM-DD)
@@ -221,6 +231,28 @@
       localStorage.setItem(STORAGE_KEY_LOCAL_TASKS, JSON.stringify(allTasks));
     }
 
+    function openDatePicker() {
+      const picker = document.getElementById('datePicker');
+      if (picker.showPicker) {
+        picker.showPicker();
+      } else {
+        picker.click();
+      }
+    }
+
+    // 배지 클릭 시: 다른 날짜를 보고 있으면 즉시 '오늘'로 복귀, 오늘이면 달력 열기
+    function onBadgeClick() {
+      const today = getTodayStr();
+      if (currentDateStr !== today) {
+        currentDateStr = today;
+        updateDateHeader();
+        loadTasks();
+        showToast('✨ 오늘 날짜로 이동했어요!');
+      } else {
+        openDatePicker();
+      }
+    }
+
     // 날짜 헤더 표시 업데이트
     function updateDateHeader() {
       const [y, m, d] = currentDateStr.split('-').map(Number);
@@ -233,11 +265,11 @@
 
       const badge = document.getElementById('todayBadge');
       if (currentDateStr === getTodayStr()) {
-        badge.textContent = '✨ 오늘의 숙제 (날짜 변경은 터치)';
-        badge.className = 'text-xs font-bold text-indigo-600';
+        badge.textContent = '✨ 오늘의 숙제 (달력 열기는 터치)';
+        badge.className = 'text-xs font-bold text-indigo-600 mt-0.5';
       } else {
-        badge.textContent = '📅 다른 날짜 보는 중 (오늘로 가려면 터치)';
-        badge.className = 'text-xs font-semibold text-amber-600';
+        badge.textContent = '↩️ 오늘 날짜로 돌아가려면 여기를 터치';
+        badge.className = 'text-xs font-bold text-amber-600 underline mt-0.5';
       }
     }
 
@@ -260,15 +292,29 @@
       loadTasks();
     }
 
+    // 과목 분류 유연 매칭 ('수학'만 적어도 '수학 숙제' 탭에 표시)
+    function matchesCategoryFilter(itemCat, filterName) {
+      if (filterName === '전체') return true;
+      const c = String(itemCat || '').trim();
+      if (filterName === '학교 숙제') return c.includes('학교');
+      if (filterName === '수학 숙제') return c.includes('수학');
+      if (filterName === '영어 숙제') return c.includes('영어');
+      if (filterName === '기타/준비물') {
+        return !c.includes('학교') && !c.includes('수학') && !c.includes('영어');
+      }
+      return c === filterName;
+    }
+
     // 과목별 스타일 배지
     function getCategoryBadge(cat) {
-      if (cat.includes('학교')) {
+      const c = String(cat || '');
+      if (c.includes('학교')) {
         return { icon: '🏫', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
       }
-      if (cat.includes('수학')) {
+      if (c.includes('수학')) {
         return { icon: '📐', bg: 'bg-purple-50 text-purple-700 border-purple-200' };
       }
-      if (cat.includes('영어')) {
+      if (c.includes('영어')) {
         return { icon: '🔤', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
       }
       return { icon: '🎒', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
@@ -334,9 +380,7 @@
         msgEl.textContent = '오늘 할 숙제를 하나씩 시작해 볼까요? 💪';
       }
 
-      const filtered = currentFilter === '전체'
-        ? tasks
-        : tasks.filter(t => t.category === currentFilter);
+      const filtered = tasks.filter(t => matchesCategoryFilter(t.category, currentFilter));
 
       if (filtered.length === 0) {
         listEl.innerHTML = `
@@ -352,10 +396,10 @@
       listEl.innerHTML = filtered.map(item => {
         const badge = getCategoryBadge(item.category);
         const isDone = item.completed;
-        const isUpdating = pendingToggles.has(item.id);
+        const isUpdating = pendingToggles.has(String(item.id));
 
         return `
-          <div onclick="toggleTask('${item.id}')" class="task-card cursor-pointer bg-white rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} flex items-start gap-3.5 ${isUpdating ? 'opacity-70 pointer-events-none' : ''}">
+          <div onclick="toggleTask('${escapeHtml(item.id)}')" class="task-card cursor-pointer bg-white rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} flex items-start gap-3.5 ${isUpdating ? 'opacity-70 pointer-events-none' : ''}">
             <!-- 체크박스 아이콘 -->
             <div class="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${isDone ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 bg-slate-50'}">
               ${isDone ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
@@ -378,15 +422,17 @@
       }).join('');
     }
 
-    // 숙제 완료 토글 (연타 방지 + 통신 실패 시 자동 롤백 적용)
+    // 숙제 완료 토글 (연타 방지 + 통신 실패 시 자동 롤백 + 렌더링 잠금 해제 보장)
     async function toggleTask(id) {
-      if (pendingToggles.has(id)) return; // 중복 클릭 차단
+      const strId = String(id);
+      if (pendingToggles.has(strId)) return;
 
-      const target = tasks.find(t => String(t.id) === String(id));
+      const target = tasks.find(t => String(t.id) === strId);
       if (!target) return;
 
       const previousState = target.completed;
       target.completed = !previousState;
+      pendingToggles.add(strId);
       renderTasks();
 
       // 전부 완료되었을 때 축하 폭죽 효과
@@ -399,16 +445,17 @@
 
       const scriptUrl = getScriptUrl();
       if (!scriptUrl) {
-        const allLocal = getInitialLocalTasks().map(t => t.id === id ? { ...t, completed: target.completed } : t);
+        pendingToggles.delete(strId);
+        const allLocal = getInitialLocalTasks().map(t => String(t.id) === strId ? { ...t, completed: target.completed } : t);
         saveLocalTasks(allLocal);
+        renderTasks();
         return;
       }
 
-      pendingToggles.add(id);
       try {
         const params = new URLSearchParams({
           action: 'toggle',
-          id: id,
+          id: strId,
           row: target.row || '',
           completed: target.completed,
           _t: Date.now()
@@ -418,23 +465,25 @@
         if (result.status === 'ok') {
           showToast(target.completed ? '✅ 시트에 완료 체크 완료!' : '체크를 해제했어요.');
         } else {
-          throw new Error('시트 저장 실패');
+          throw new Error(result.message || '시트 저장 실패');
         }
       } catch (e) {
         console.error('시트 동기화 에러:', e);
-        // 통신 오류 발생 시 화면 상태를 원래대로 복구(Rollback)
         target.completed = previousState;
-        renderTasks();
         showToast('⚠️ 저장 실패: 통신 상태를 확인해주세요.');
       } finally {
-        pendingToggles.delete(id);
+        pendingToggles.delete(strId);
+        renderTasks();
       }
     }
 
-    // 새 숙제 추가
+    // 새 숙제 추가 (중복 등록 방지 + 서버 행 번호 즉시 반영)
     async function submitNewTask() {
+      if (isSubmittingNewTask) return;
+
       const titleEl = document.getElementById('inputTitle');
       const memoEl = document.getElementById('inputMemo');
+      const btnEl = document.getElementById('submitTaskBtn');
       const title = titleEl.value.trim();
       const memo = memoEl.value.trim();
 
@@ -444,9 +493,13 @@
         return;
       }
 
+      isSubmittingNewTask = true;
+      btnEl.disabled = true;
+
+      const tempId = 'hw-' + Date.now();
       const newTask = {
-        id: 'hw-' + Date.now(),
-        row: tasks.length + 2,
+        id: tempId,
+        row: '',
         date: currentDateStr,
         category: selectedModalCat,
         title: title,
@@ -466,6 +519,8 @@
         const allLocal = getInitialLocalTasks();
         allLocal.push(newTask);
         saveLocalTasks(allLocal);
+        isSubmittingNewTask = false;
+        btnEl.disabled = false;
         return;
       }
 
@@ -478,10 +533,18 @@
           memo: newTask.memo,
           _t: Date.now()
         });
-        await fetch(`${scriptUrl}?${params.toString()}`);
-        loadTasks(); // 최신 행 번호 갱신
+        const res = await fetch(`${scriptUrl}?${params.toString()}`);
+        const result = await res.json();
+        if (result.status === 'ok') {
+          if (result.id) newTask.id = result.id;
+          if (result.targetRow) newTask.row = result.targetRow;
+          renderTasks();
+        }
       } catch (e) {
         showToast('⚠️ 시트 동기화 실패 (네트워크를 확인해주세요)');
+      } finally {
+        isSubmittingNewTask = false;
+        btnEl.disabled = false;
       }
     }
 
@@ -543,7 +606,8 @@
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.remove('opacity-0');
-      setTimeout(() => t.classList.add('opacity-0'), 2600);
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.add('opacity-0'), 2600);
     }
 
     function escapeHtml(str) {
@@ -551,14 +615,16 @@
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
-    // 모바일 앱 복귀 감지 (자정 지나서 다음 날 켰을 때 오늘 날짜로 자동 갱신)
+    // 모바일 앱 복귀 감지 (실제로 자정이 지나 날짜가 바뀐 경우에만 오늘로 전환)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         const today = getTodayStr();
-        if (currentDateStr !== today) {
+        if (today !== lastKnownTodayStr) {
+          lastKnownTodayStr = today;
           currentDateStr = today;
           updateDateHeader();
         }
