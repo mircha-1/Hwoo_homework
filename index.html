@@ -184,10 +184,9 @@
 
   <script>
     /**
-     * 💡 [선택] 코드에 아예 구글 시트 주소를 고정하고 싶으시다면
-     * 아래 따옴표 안에 'https://script.google.com/macros/s/.../exec' 주소를 넣어두셔도 됩니다.
+     * 기본 구글 시트 웹 앱 URL (아이 폰에서도 별도 설정 없이 바로 연동)
      */
-    const DEFAULT_SCRIPT_URL = '';
+    const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyxtgVw1sD-hxVsmLOGr_dvPvaHnrwCR79ya7cA1aJNnc-pQxAOxjSxKEI91VIGHVdq/exec';
 
     const STORAGE_KEY_URL = 'homework_app_script_url_v1';
     const STORAGE_KEY_LOCAL_TASKS = 'homework_app_local_tasks_v1';
@@ -382,13 +381,10 @@
 
             <!-- 숙제 본문 -->
             <div class="flex-1 min-w-0">
-              <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="flex items-center gap-2 mb-1">
                 <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${badge.bg}">
                   ${badge.icon} ${escapeHtml(item.category)}
                 </span>
-                <button onclick="event.stopPropagation(); deleteTask('${item.id}')" title="삭제" class="text-slate-300 hover:text-rose-500 p-1 text-xs">
-                  삭제
-                </button>
               </div>
               <p class="text-base font-bold leading-snug ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}">
                 ${escapeHtml(item.title)}
