@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="오늘의숙제" />
@@ -17,6 +17,7 @@
       font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       background-color: #F1F5F9;
       -webkit-tap-highlight-color: transparent;
+      padding-bottom: max(6.5rem, calc(4.5rem + env(safe-area-inset-bottom)));
     }
     .task-card {
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -26,7 +27,7 @@
     }
   </style>
 </head>
-<body class="min-h-screen pb-24 text-slate-800">
+<body class="min-h-screen text-slate-800">
 
   <!-- 상단 헤더 -->
   <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-20">
@@ -35,7 +36,7 @@
         <span class="text-2xl">📝</span>
         <div>
           <h1 class="text-lg font-bold leading-tight">오늘의 숙제 체크장</h1>
-          <p id="syncStatusText" class="text-xs text-indigo-200">로컬 체험 모드 (⚙️에서 시트 연결)</p>
+          <p id="syncStatusText" class="text-xs text-indigo-200">구글 시트 실시간 연동 중</p>
         </div>
       </div>
       <div class="flex items-center gap-1.5">
@@ -99,7 +100,7 @@
 
     <!-- 하단 액션 버튼 (숙제 추가) -->
     <div class="pt-2">
-      <button onclick="openAddModal()" class="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base shadow-sm active:scale-95 transition">
+      <button onclick="openAddModal()" class="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base shadow-md active:scale-95 transition">
         <span>➕</span> 숙제 추가하기
       </button>
     </div>
@@ -152,22 +153,12 @@
       </div>
 
       <p class="text-xs text-slate-600 leading-relaxed">
-        구글 스프레드시트의 <b>[확장 프로그램 &gt; Apps Script]</b>에서 배포한 <b>웹 앱 URL</b>을 아래에 붙여넣으시면 부모님과 아이 폰이 실시간으로 연동됩니다.
+        구글 스프레드시트의 <b>[확장 프로그램 &gt; Apps Script]</b>에서 배포한 <b>웹 앱 URL</b>입니다. 현재 기본 주소가 내장되어 있어 별도 수정 없이 바로 작동합니다.
       </p>
 
       <div>
         <label class="block text-xs font-bold text-slate-700 mb-1">Apps Script 웹 앱 URL</label>
         <input id="inputScriptUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-      </div>
-
-      <div class="bg-indigo-50 rounded-2xl p-3 space-y-2">
-        <p class="text-xs font-bold text-indigo-900">💡 아이 폰에 1초 만에 연결하는 팁</p>
-        <p class="text-[11px] text-indigo-700 leading-relaxed">
-          위 주소를 저장한 뒤 아래 버튼을 눌러 아이 카톡으로 보내주세요. 아이가 링크를 한 번만 터치하면 아이 폰에도 구글 시트가 자동 연결됩니다!
-        </p>
-        <button onclick="copyChildInviteLink()" class="w-full py-2 rounded-xl bg-white border border-indigo-200 text-indigo-700 font-bold text-xs shadow-sm active:scale-95 transition">
-          🔗 아이 폰 자동연결 링크 복사하기
-        </button>
       </div>
 
       <div class="flex gap-2 pt-1">
@@ -184,7 +175,7 @@
 
   <script>
     /**
-     * 기본 구글 시트 웹 앱 URL (아이 폰에서도 별도 설정 없이 바로 연동)
+     * 기본 구글 시트 웹 앱 URL (모든 기기에서 자동 연동)
      */
     const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyxtgVw1sD-hxVsmLOGr_dvPvaHnrwCR79ya7cA1aJNnc-pQxAOxjSxKEI91VIGHVdq/exec';
 
@@ -195,8 +186,9 @@
     let currentFilter = '전체';
     let selectedModalCat = '학교 숙제';
     let tasks = [];
+    const pendingToggles = new Set(); // 중복 클릭 방지 세트
 
-    // 오늘 날짜 (YYYY-MM-DD)
+    // 오늘 날짜 문자열 (YYYY-MM-DD)
     function getTodayStr() {
       const now = new Date();
       const y = now.getFullYear();
@@ -205,23 +197,11 @@
       return `${y}-${m}-${d}`;
     }
 
-    // URL 파라미터(?api=...)로 전달된 구글 시트 주소가 있으면 자동 저장
-    function checkUrlApiParam() {
-      const params = new URLSearchParams(window.location.search);
-      const apiParam = params.get('api');
-      if (apiParam && apiParam.startsWith('https://script.google.com/')) {
-        localStorage.setItem(STORAGE_KEY_URL, apiParam.trim());
-        // 주소창 깔끔하게 정리
-        window.history.replaceState({}, document.title, window.location.pathname);
-        showToast('✅ 구글 시트 연동이 자동으로 설정되었습니다!');
-      }
-    }
-
     function getScriptUrl() {
       return localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_SCRIPT_URL || '';
     }
 
-    // 초기 샘플 데이터 (구글 시트 연결 전에도 바로 테스트 가능)
+    // 로컬 체험용 샘플 데이터
     function getInitialLocalTasks() {
       const saved = localStorage.getItem(STORAGE_KEY_LOCAL_TASKS);
       if (saved) {
@@ -241,7 +221,7 @@
       localStorage.setItem(STORAGE_KEY_LOCAL_TASKS, JSON.stringify(allTasks));
     }
 
-    // 날짜 표시 업데이트
+    // 날짜 헤더 표시 업데이트
     function updateDateHeader() {
       const [y, m, d] = currentDateStr.split('-').map(Number);
       const dateObj = new Date(y, m - 1, d);
@@ -256,7 +236,7 @@
         badge.textContent = '✨ 오늘의 숙제 (날짜 변경은 터치)';
         badge.className = 'text-xs font-bold text-indigo-600';
       } else {
-        badge.textContent = '📅 다른 날짜 보는 중 (오늘로 가려면 더블탭)';
+        badge.textContent = '📅 다른 날짜 보는 중 (오늘로 가려면 터치)';
         badge.className = 'text-xs font-semibold text-amber-600';
       }
     }
@@ -294,7 +274,7 @@
       return { icon: '🎒', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
 
-    // 숙제 데이터 불러오기 (구글 시트 연동 또는 로컬 모드)
+    // 숙제 목록 불러오기
     async function loadTasks() {
       const scriptUrl = getScriptUrl();
       const statusEl = document.getElementById('syncStatusText');
@@ -312,16 +292,16 @@
 
       statusEl.textContent = '☁️ 구글 시트와 동기화 중...';
       try {
-        const res = await fetch(`${scriptUrl}?date=${encodeURIComponent(currentDateStr)}`);
+        const res = await fetch(`${scriptUrl}?date=${encodeURIComponent(currentDateStr)}&_t=${Date.now()}`);
         const data = await res.json();
         if (data.status === 'ok') {
           tasks = data.items || [];
           statusEl.textContent = '✅ 구글 스프레드시트 실시간 연동 중';
         } else {
-          statusEl.textContent = '⚠️ 시트 응답 오류 (설정을 확인해주세요)';
+          statusEl.textContent = '⚠️ 시트 응답 오류';
         }
       } catch (err) {
-        statusEl.textContent = '⚠️ 연결 실패 (오프라인 또는 URL 확인 필요)';
+        statusEl.textContent = '⚠️ 연결 실패 (네트워크를 확인해주세요)';
       } finally {
         iconEl.classList.remove('animate-spin');
         renderTasks();
@@ -372,8 +352,10 @@
       listEl.innerHTML = filtered.map(item => {
         const badge = getCategoryBadge(item.category);
         const isDone = item.completed;
+        const isUpdating = pendingToggles.has(item.id);
+
         return `
-          <div onclick="toggleTask('${item.id}')" class="task-card cursor-pointer bg-white rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} flex items-start gap-3.5">
+          <div onclick="toggleTask('${item.id}')" class="task-card cursor-pointer bg-white rounded-2xl p-4 shadow-sm border ${isDone ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'} flex items-start gap-3.5 ${isUpdating ? 'opacity-70 pointer-events-none' : ''}">
             <!-- 체크박스 아이콘 -->
             <div class="mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${isDone ? 'bg-emerald-500 text-white shadow-sm' : 'border-2 border-slate-300 bg-slate-50'}">
               ${isDone ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : ''}
@@ -396,12 +378,15 @@
       }).join('');
     }
 
-    // 숙제 완료 토글 (실시간 동기화 강화)
+    // 숙제 완료 토글 (연타 방지 + 통신 실패 시 자동 롤백 적용)
     async function toggleTask(id) {
+      if (pendingToggles.has(id)) return; // 중복 클릭 차단
+
       const target = tasks.find(t => String(t.id) === String(id));
       if (!target) return;
 
-      target.completed = !target.completed;
+      const previousState = target.completed;
+      target.completed = !previousState;
       renderTasks();
 
       // 전부 완료되었을 때 축하 폭죽 효과
@@ -419,8 +404,8 @@
         return;
       }
 
+      pendingToggles.add(id);
       try {
-        // GET 방식으로 직접 파라미터를 넘겨 구글 CORS 리다이렉트 문제 100% 우회
         const params = new URLSearchParams({
           action: 'toggle',
           id: id,
@@ -432,10 +417,17 @@
         const result = await res.json();
         if (result.status === 'ok') {
           showToast(target.completed ? '✅ 시트에 완료 체크 완료!' : '체크를 해제했어요.');
+        } else {
+          throw new Error('시트 저장 실패');
         }
       } catch (e) {
         console.error('시트 동기화 에러:', e);
-        showToast('⚠️ 시트 저장 중 네트워크 오류가 발생했어요.');
+        // 통신 오류 발생 시 화면 상태를 원래대로 복구(Rollback)
+        target.completed = previousState;
+        renderTasks();
+        showToast('⚠️ 저장 실패: 통신 상태를 확인해주세요.');
+      } finally {
+        pendingToggles.delete(id);
       }
     }
 
@@ -493,53 +485,6 @@
       }
     }
 
-    // 숙제 삭제
-    async function deleteTask(id) {
-      if (!confirm('이 숙제 항목을 삭제할까요?')) return;
-      const target = tasks.find(t => String(t.id) === String(id));
-      tasks = tasks.filter(t => String(t.id) !== String(id));
-      renderTasks();
-      showToast('🗑️ 삭제되었습니다.');
-
-      const scriptUrl = getScriptUrl();
-      if (!scriptUrl) {
-        const allLocal = getInitialLocalTasks().filter(t => String(t.id) !== String(id));
-        saveLocalTasks(allLocal);
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams({
-          action: 'delete',
-          id: id,
-          row: target ? target.row : '',
-          _t: Date.now()
-        });
-        await fetch(`${scriptUrl}?${params.toString()}`);
-        loadTasks();
-      } catch (e) {}
-    }
-
-    // 아이 폰 자동연결 링크 생성
-    function getChildInviteUrl() {
-      const base = window.location.origin + window.location.pathname;
-      const scriptUrl = getScriptUrl();
-      if (scriptUrl) {
-        return `${base}?api=${encodeURIComponent(scriptUrl)}`;
-      }
-      return base;
-    }
-
-    async function copyChildInviteLink() {
-      const inputUrl = document.getElementById('inputScriptUrl').value.trim();
-      if (inputUrl) {
-        localStorage.setItem(STORAGE_KEY_URL, inputUrl);
-      }
-      const inviteUrl = getChildInviteUrl();
-      await navigator.clipboard.writeText(inviteUrl);
-      showToast('🔗 자동연결 링크가 복사되었습니다! 아이 카톡으로 보내주세요.');
-    }
-
     // 필터 및 모달 UI 제어
     function setFilter(cat) {
       currentFilter = cat;
@@ -590,7 +535,7 @@
       const val = document.getElementById('inputScriptUrl').value.trim();
       localStorage.setItem(STORAGE_KEY_URL, val);
       closeSettingsModal();
-      showToast('✅ 구글 시트 연동 설정이 저장되었습니다!');
+      showToast('✅ 연동 설정이 저장되었습니다!');
       loadTasks();
     }
 
@@ -609,8 +554,19 @@
         .replace(/"/g, '&quot;');
     }
 
+    // 모바일 앱 복귀 감지 (자정 지나서 다음 날 켰을 때 오늘 날짜로 자동 갱신)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        const today = getTodayStr();
+        if (currentDateStr !== today) {
+          currentDateStr = today;
+          updateDateHeader();
+        }
+        loadTasks();
+      }
+    });
+
     // 앱 시작
-    checkUrlApiParam();
     updateDateHeader();
     loadTasks();
   </script>
